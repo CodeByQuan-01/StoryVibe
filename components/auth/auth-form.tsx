@@ -71,7 +71,31 @@ export function AuthForm() {
       router.push("/dashboard");
     } catch (err: any) {
       console.error("Signup error:", err);
-      setError(err.message || "Failed to sign up. Please try again.");
+      // Show more detailed error message
+      if (err.code) {
+        switch (err.code) {
+          case "auth/email-already-in-use":
+            setError(
+              "This email is already in use. Please try another email or sign in."
+            );
+            break;
+          case "auth/invalid-email":
+            setError("Invalid email address format.");
+            break;
+          case "auth/weak-password":
+            setError("Password is too weak. Please use a stronger password.");
+            break;
+          case "auth/network-request-failed":
+            setError("Network error. Please check your internet connection.");
+            break;
+          default:
+            setError(
+              `Error: ${err.message || "Failed to sign up. Please try again."}`
+            );
+        }
+      } else {
+        setError(err.message || "Failed to sign up. Please try again.");
+      }
     } finally {
       setIsLoading(false);
     }

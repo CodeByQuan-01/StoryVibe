@@ -48,36 +48,45 @@ export function useAuth() {
     return () => unsubscribe();
   }, []);
 
+  // Update the signUp function to handle errors better
   const signUp = async (
     email: string,
     password: string,
     displayName: string
   ) => {
     try {
+      console.log("Starting signup process...");
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         email,
         password
       );
       const firebaseUser = userCredential.user;
+      console.log("User created in Firebase Auth:", firebaseUser.uid);
 
       // Update profile with display name
       await updateProfile(firebaseUser, { displayName });
+      console.log("Profile updated with display name");
 
       // Create user document
       const newUser: User = {
         id: firebaseUser.uid,
         email: firebaseUser.email || "",
         displayName,
-        photoURL: firebaseUser.photoURL || null, // Change undefined to null
+        photoURL: firebaseUser.photoURL || null,
         isAdmin: false,
         createdAt: Date.now(),
       };
 
+      console.log("Creating user document in Firestore...");
       await setDoc(doc(db, "users", firebaseUser.uid), newUser);
+      console.log("User document created successfully");
+
       return newUser;
-    } catch (error) {
-      console.error("Error signing up:", error);
+    } catch (error: any) {
+      console.error("Error in signUp function:", error);
+      console.error("Error code:", error.code);
+      console.error("Error message:", error.message);
       throw error;
     }
   };

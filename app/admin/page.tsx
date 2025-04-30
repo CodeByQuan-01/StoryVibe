@@ -238,9 +238,7 @@ export default function AdminPage() {
                         <AlertDialogHeader>
                           <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                           <AlertDialogDescription>
-                            This action cannot be undone. This will permanently
-                            delete the story "{story.title}" and all its
-                            chapters, including any uploaded music files.
+                            {`This action cannot be undone. This will permanently delete the story "${story.title}" and all its chapters, including any uploaded music files.`}
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>

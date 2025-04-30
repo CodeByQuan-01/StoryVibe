@@ -40,6 +40,7 @@ export function StoryForm({ story, isEditing = false }: StoryFormProps) {
     story?.coverImage || ""
   );
   const [formError, setFormError] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -97,7 +98,10 @@ export function StoryForm({ story, isEditing = false }: StoryFormProps) {
         .map((tag) => tag.trim())
         .filter((tag) => tag.length > 0);
 
+      setUploadProgress(10);
+
       if (isEditing && story) {
+        setUploadProgress(30);
         await updateStory(
           story.id,
           {
@@ -108,10 +112,12 @@ export function StoryForm({ story, isEditing = false }: StoryFormProps) {
           },
           coverImage
         );
+        setUploadProgress(100);
 
         router.push(`/dashboard/stories/${story.id}`);
         router.refresh();
       } else {
+        setUploadProgress(30);
         const newStory = await createStory(
           {
             title,
@@ -120,9 +126,11 @@ export function StoryForm({ story, isEditing = false }: StoryFormProps) {
             authorName: user.displayName,
             tags: tagArray,
             published: false,
+            coverImage: "", // Will be updated by the createStory
           },
           coverImage
         );
+        setUploadProgress(100);
 
         router.push(`/dashboard/stories/${newStory.id}`);
         router.refresh();
@@ -130,6 +138,7 @@ export function StoryForm({ story, isEditing = false }: StoryFormProps) {
     } catch (err) {
       console.error("Error submitting story:", err);
       setFormError("Failed to save story. Please try again.");
+      setUploadProgress(0);
     }
   };
 
@@ -218,6 +227,18 @@ export function StoryForm({ story, isEditing = false }: StoryFormProps) {
               />
             </div>
           </div>
+
+          {uploadProgress > 0 && uploadProgress < 100 && (
+            <div className="w-full bg-gray-200 rounded-full h-2.5">
+              <div
+                className="bg-[#1A73E8] h-2.5 rounded-full"
+                style={{ width: `${uploadProgress}%` }}
+              ></div>
+              <p className="text-xs text-gray-500 mt-1 text-center">
+                Uploading... {uploadProgress}%
+              </p>
+            </div>
+          )}
 
           {(formError || error) && (
             <Alert variant="destructive">

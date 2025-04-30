@@ -16,13 +16,12 @@ import {
   startAfter,
   type DocumentSnapshot,
 } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import {
-  ref,
-  uploadBytes,
-  getDownloadURL,
-  deleteObject,
-} from "firebase/storage";
-import { db, storage } from "@/lib/firebase";
+  uploadToCloudinary,
+  deleteFromCloudinary,
+  getPublicIdFromUrl,
+} from "@/lib/cloudinary";
 import type { Story } from "@/lib/types";
 
 export function useStories() {
@@ -30,7 +29,10 @@ export function useStories() {
   const [error, setError] = useState<string | null>(null);
 
   const createStory = async (
-    story: Omit<Story, "id" | "createdAt" | "updatedAt" | "chapterCount">,
+    story: Omit<
+      Story,
+      "id" | "createdAt" | "updatedAt" | "chapterCount" | "coverImagePublicId"
+    >,
     coverImageFile: File | null
   ) => {
     setLoading(true);
@@ -38,21 +40,24 @@ export function useStories() {
 
     try {
       let coverImageUrl = "";
+      let coverImagePublicId = "";
 
-      // Upload cover image if provided
+      // Upload cover image to Cloudinary if provided
       if (coverImageFile) {
-        const storageRef = ref(
-          storage,
-          `covers/${Date.now()}_${coverImageFile.name}`
+        const cloudinaryResponse = await uploadToCloudinary(
+          coverImageFile,
+          `storyvibe/covers/${story.authorId}`,
+          "image"
         );
-        const snapshot = await uploadBytes(storageRef, coverImageFile);
-        coverImageUrl = await getDownloadURL(snapshot.ref);
+        coverImageUrl = cloudinaryResponse.url;
+        coverImagePublicId = cloudinaryResponse.publicId;
       }
 
       // Create story document
       const storyData = {
         ...story,
         coverImage: coverImageUrl,
+        coverImagePublicId: coverImagePublicId,
         createdAt: Date.now(),
         updatedAt: Date.now(),
         chapterCount: 0,
@@ -87,32 +92,47 @@ export function useStories() {
 
       const currentStory = storyDoc.data() as Story;
       let coverImageUrl = currentStory.coverImage;
+      let coverImagePublicId = currentStory.coverImagePublicId || "";
 
       // Upload new cover image if provided
       if (coverImageFile) {
-        // Delete old image if it exists
-        if (currentStory.coverImage) {
+        // Delete old image from Cloudinary if it exists
+        if (currentStory.coverImagePublicId) {
           try {
-            const oldImageRef = ref(storage, currentStory.coverImage);
-            await deleteObject(oldImageRef);
+            await deleteFromCloudinary(
+              currentStory.coverImagePublicId,
+              "image"
+            );
           } catch (err) {
             console.error("Error deleting old cover image:", err);
           }
+        } else if (currentStory.coverImage) {
+          // Try to extract public ID from URL for legacy images
+          const publicId = getPublicIdFromUrl(currentStory.coverImage);
+          if (publicId) {
+            try {
+              await deleteFromCloudinary(publicId, "image");
+            } catch (err) {
+              console.error("Error deleting old cover image:", err);
+            }
+          }
         }
 
-        // Upload new image
-        const storageRef = ref(
-          storage,
-          `covers/${Date.now()}_${coverImageFile.name}`
+        // Upload new image to Cloudinary
+        const cloudinaryResponse = await uploadToCloudinary(
+          coverImageFile,
+          `storyvibe/covers/${currentStory.authorId}`,
+          "image"
         );
-        const snapshot = await uploadBytes(storageRef, coverImageFile);
-        coverImageUrl = await getDownloadURL(snapshot.ref);
+        coverImageUrl = cloudinaryResponse.url;
+        coverImagePublicId = cloudinaryResponse.publicId;
       }
 
       // Update story document
       const updatedData = {
         ...storyData,
         coverImage: coverImageUrl,
+        coverImagePublicId: coverImagePublicId,
         updatedAt: Date.now(),
       };
 
@@ -141,13 +161,22 @@ export function useStories() {
 
       const story = storyDoc.data() as Story;
 
-      // Delete cover image if it exists
-      if (story.coverImage) {
+      // Delete cover image from Cloudinary if it exists
+      if (story.coverImagePublicId) {
         try {
-          const imageRef = ref(storage, story.coverImage);
-          await deleteObject(imageRef);
+          await deleteFromCloudinary(story.coverImagePublicId, "image");
         } catch (err) {
           console.error("Error deleting cover image:", err);
+        }
+      } else if (story.coverImage) {
+        // Try to extract public ID from URL for legacy images
+        const publicId = getPublicIdFromUrl(story.coverImage);
+        if (publicId) {
+          try {
+            await deleteFromCloudinary(publicId, "image");
+          } catch (err) {
+            console.error("Error deleting cover image:", err);
+          }
         }
       }
 
@@ -162,13 +191,22 @@ export function useStories() {
         async (chapterDoc) => {
           const chapter = chapterDoc.data();
 
-          // Delete chapter music if it exists
-          if (chapter.musicUrl) {
+          // Delete chapter music from Cloudinary if it exists
+          if (chapter.musicPublicId) {
             try {
-              const musicRef = ref(storage, chapter.musicUrl);
-              await deleteObject(musicRef);
+              await deleteFromCloudinary(chapter.musicPublicId, "video"); // Using video for audio files
             } catch (err) {
               console.error("Error deleting chapter music:", err);
+            }
+          } else if (chapter.musicUrl) {
+            // Try to extract public ID from URL for legacy audio files
+            const publicId = getPublicIdFromUrl(chapter.musicUrl);
+            if (publicId) {
+              try {
+                await deleteFromCloudinary(publicId, "video"); // Using video for audio files
+              } catch (err) {
+                console.error("Error deleting chapter music:", err);
+              }
             }
           }
 

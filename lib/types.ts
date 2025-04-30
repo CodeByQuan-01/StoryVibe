@@ -2,7 +2,7 @@ export interface User {
   id: string;
   email: string;
   displayName: string;
-  photoURL?: string;
+  photoURL?: string | null;
   isAdmin?: boolean;
   createdAt: number;
 }
@@ -12,6 +12,7 @@ export interface Story {
   title: string;
   description: string;
   coverImage: string;
+  coverImagePublicId?: string; // Added for Cloudinary
   authorId: string;
   authorName: string;
   tags: string[];
@@ -27,6 +28,7 @@ export interface Chapter {
   title: string;
   content: string;
   musicUrl?: string;
+  musicPublicId?: string; // Added for Cloudinary
   musicFilename?: string;
   order: number;
   createdAt: number;
@@ -41,4 +43,10 @@ export interface Comment {
   userName: string;
   content: string;
   createdAt: number;
+}
+
+// Cloudinary asset interface
+export interface CloudinaryAsset {
+  url: string;
+  publicId: string;
 }

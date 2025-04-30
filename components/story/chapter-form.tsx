@@ -43,6 +43,7 @@ export function ChapterForm({
     chapter?.musicFilename || ""
   );
   const [formError, setFormError] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -90,7 +91,10 @@ export function ChapterForm({
     }
 
     try {
+      setUploadProgress(10);
+
       if (isEditing && chapter) {
+        setUploadProgress(30);
         await updateChapter(
           chapter.id,
           {
@@ -100,10 +104,12 @@ export function ChapterForm({
           },
           musicFile
         );
+        setUploadProgress(100);
 
         router.push(`/dashboard/stories/${storyId}`);
         router.refresh();
       } else {
+        setUploadProgress(30);
         await createChapter(
           {
             storyId,
@@ -113,6 +119,7 @@ export function ChapterForm({
           },
           musicFile
         );
+        setUploadProgress(100);
 
         router.push(`/dashboard/stories/${storyId}`);
         router.refresh();
@@ -120,6 +127,7 @@ export function ChapterForm({
     } catch (err) {
       console.error("Error submitting chapter:", err);
       setFormError("Failed to save chapter. Please try again.");
+      setUploadProgress(0);
     }
   };
 
@@ -198,6 +206,18 @@ export function ChapterForm({
               />
             </div>
           </div>
+
+          {uploadProgress > 0 && uploadProgress < 100 && (
+            <div className="w-full bg-gray-200 rounded-full h-2.5">
+              <div
+                className="bg-[#1A73E8] h-2.5 rounded-full"
+                style={{ width: `${uploadProgress}%` }}
+              ></div>
+              <p className="text-xs text-gray-500 mt-1 text-center">
+                Uploading... {uploadProgress}%
+              </p>
+            </div>
+          )}
 
           {(formError || error) && (
             <Alert variant="destructive">

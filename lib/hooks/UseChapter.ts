@@ -14,13 +14,12 @@ import {
   getDoc,
   increment,
 } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import {
-  ref,
-  uploadBytes,
-  getDownloadURL,
-  deleteObject,
-} from "firebase/storage";
-import { db, storage } from "@/lib/firebase";
+  uploadToCloudinary,
+  deleteFromCloudinary,
+  getPublicIdFromUrl,
+} from "@/lib/cloudinary";
 import type { Chapter } from "@/lib/types";
 
 export function useChapters() {
@@ -30,7 +29,12 @@ export function useChapters() {
   const createChapter = async (
     chapter: Omit<
       Chapter,
-      "id" | "createdAt" | "updatedAt" | "musicUrl" | "musicFilename"
+      | "id"
+      | "createdAt"
+      | "updatedAt"
+      | "musicUrl"
+      | "musicFilename"
+      | "musicPublicId"
     >,
     musicFile: File | null
   ) => {
@@ -40,15 +44,17 @@ export function useChapters() {
     try {
       let musicUrl = "";
       let musicFilename = "";
+      let musicPublicId = "";
 
-      // Upload music file if provided
+      // Upload music file to Cloudinary if provided
       if (musicFile) {
-        const storageRef = ref(
-          storage,
-          `music/${chapter.storyId}/${Date.now()}_${musicFile.name}`
+        const cloudinaryResponse = await uploadToCloudinary(
+          musicFile,
+          `storyvibe/music/${chapter.storyId}`,
+          "video" // Cloudinary uses "video" resource type for audio files
         );
-        const snapshot = await uploadBytes(storageRef, musicFile);
-        musicUrl = await getDownloadURL(snapshot.ref);
+        musicUrl = cloudinaryResponse.url;
+        musicPublicId = cloudinaryResponse.publicId;
         musicFilename = musicFile.name;
       }
 
@@ -56,6 +62,7 @@ export function useChapters() {
       const chapterData = {
         ...chapter,
         musicUrl,
+        musicPublicId,
         musicFilename,
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -98,41 +105,64 @@ export function useChapters() {
       }
 
       const currentChapter = chapterDoc.data() as Chapter;
-      let musicUrl = currentChapter.musicUrl;
-      let musicFilename = currentChapter.musicFilename;
+      let musicUrl = currentChapter.musicUrl || "";
+      let musicFilename = currentChapter.musicFilename || "";
+      let musicPublicId = currentChapter.musicPublicId || "";
 
       // Handle music file update
       if (musicFile !== undefined) {
         // If musicFile is null, it means remove the current music
-        if (musicFile === null && currentChapter.musicUrl) {
+        if (
+          musicFile === null &&
+          (currentChapter.musicUrl || currentChapter.musicPublicId)
+        ) {
           try {
-            const oldMusicRef = ref(storage, currentChapter.musicUrl);
-            await deleteObject(oldMusicRef);
+            // Delete from Cloudinary if we have the public ID
+            if (currentChapter.musicPublicId) {
+              await deleteFromCloudinary(currentChapter.musicPublicId, "video");
+            } else if (currentChapter.musicUrl) {
+              // Try to extract public ID from URL for legacy audio files
+              const publicId = getPublicIdFromUrl(currentChapter.musicUrl);
+              if (publicId) {
+                await deleteFromCloudinary(publicId, "video");
+              }
+            }
             musicUrl = "";
             musicFilename = "";
+            musicPublicId = "";
           } catch (err) {
             console.error("Error deleting old music file:", err);
           }
         }
         // If a new music file is provided, upload it
         else if (musicFile) {
-          // Delete old music if it exists
-          if (currentChapter.musicUrl) {
+          // Delete old music from Cloudinary if it exists
+          if (currentChapter.musicPublicId) {
             try {
-              const oldMusicRef = ref(storage, currentChapter.musicUrl);
-              await deleteObject(oldMusicRef);
+              await deleteFromCloudinary(currentChapter.musicPublicId, "video");
             } catch (err) {
               console.error("Error deleting old music file:", err);
             }
+          } else if (currentChapter.musicUrl) {
+            // Try to extract public ID from URL for legacy audio files
+            const publicId = getPublicIdFromUrl(currentChapter.musicUrl);
+            if (publicId) {
+              try {
+                await deleteFromCloudinary(publicId, "video");
+              } catch (err) {
+                console.error("Error deleting old music file:", err);
+              }
+            }
           }
 
-          // Upload new music
-          const storageRef = ref(
-            storage,
-            `music/${currentChapter.storyId}/${Date.now()}_${musicFile.name}`
+          // Upload new music to Cloudinary
+          const cloudinaryResponse = await uploadToCloudinary(
+            musicFile,
+            `storyvibe/music/${currentChapter.storyId}`,
+            "video" // Cloudinary uses "video" resource type for audio files
           );
-          const snapshot = await uploadBytes(storageRef, musicFile);
-          musicUrl = await getDownloadURL(snapshot.ref);
+          musicUrl = cloudinaryResponse.url;
+          musicPublicId = cloudinaryResponse.publicId;
           musicFilename = musicFile.name;
         }
       }
@@ -141,6 +171,7 @@ export function useChapters() {
       const updatedData = {
         ...chapterData,
         musicUrl,
+        musicPublicId,
         musicFilename,
         updatedAt: Date.now(),
       };
@@ -176,13 +207,22 @@ export function useChapters() {
 
       const chapter = chapterDoc.data() as Chapter;
 
-      // Delete music file if it exists
-      if (chapter.musicUrl) {
+      // Delete music file from Cloudinary if it exists
+      if (chapter.musicPublicId) {
         try {
-          const musicRef = ref(storage, chapter.musicUrl);
-          await deleteObject(musicRef);
+          await deleteFromCloudinary(chapter.musicPublicId, "video");
         } catch (err) {
           console.error("Error deleting music file:", err);
+        }
+      } else if (chapter.musicUrl) {
+        // Try to extract public ID from URL for legacy audio files
+        const publicId = getPublicIdFromUrl(chapter.musicUrl);
+        if (publicId) {
+          try {
+            await deleteFromCloudinary(publicId, "video");
+          } catch (err) {
+            console.error("Error deleting music file:", err);
+          }
         }
       }
 

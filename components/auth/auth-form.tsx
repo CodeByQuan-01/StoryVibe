@@ -43,6 +43,7 @@ export function AuthForm() {
       await signIn(loginEmail, loginPassword);
       router.push("/dashboard");
     } catch (err: any) {
+      console.error("Login error:", err);
       setError(err.message || "Failed to sign in. Please try again.");
     } finally {
       setIsLoading(false);
@@ -69,6 +70,7 @@ export function AuthForm() {
       await signUp(signupEmail, signupPassword, displayName);
       router.push("/dashboard");
     } catch (err: any) {
+      console.error("Signup error:", err);
       setError(err.message || "Failed to sign up. Please try again.");
     } finally {
       setIsLoading(false);
@@ -83,6 +85,7 @@ export function AuthForm() {
       await signInWithGoogle();
       router.push("/dashboard");
     } catch (err: any) {
+      console.error("Google sign-in error:", err);
       setError(
         err.message || "Failed to sign in with Google. Please try again."
       );

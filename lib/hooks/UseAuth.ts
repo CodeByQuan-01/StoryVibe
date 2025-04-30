@@ -7,11 +7,10 @@ import {
   signOut as firebaseSignOut,
   onAuthStateChanged,
   updateProfile,
-  GoogleAuthProvider,
   signInWithPopup,
 } from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { auth, db, googleProvider } from "@/lib/firebase";
 import type { User } from "@/lib/types";
 
 export function useAuth() {
@@ -33,7 +32,7 @@ export function useAuth() {
               firebaseUser.displayName ||
               firebaseUser.email?.split("@")[0] ||
               "User",
-            photoURL: firebaseUser.photoURL || undefined,
+            photoURL: firebaseUser.photoURL || null, // Change undefined to null
             isAdmin: false,
             createdAt: Date.now(),
           };
@@ -70,7 +69,7 @@ export function useAuth() {
         id: firebaseUser.uid,
         email: firebaseUser.email || "",
         displayName,
-        photoURL: firebaseUser.photoURL || undefined,
+        photoURL: firebaseUser.photoURL || null, // Change undefined to null
         isAdmin: false,
         createdAt: Date.now(),
       };
@@ -94,7 +93,7 @@ export function useAuth() {
 
   const signInWithGoogle = async () => {
     try {
-      const provider = new GoogleAuthProvider();
+      const provider = googleProvider;
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
 
@@ -106,7 +105,7 @@ export function useAuth() {
           id: firebaseUser.uid,
           email: firebaseUser.email || "",
           displayName: firebaseUser.displayName || "User",
-          photoURL: firebaseUser.photoURL || undefined,
+          photoURL: firebaseUser.photoURL || null,
           isAdmin: false,
           createdAt: Date.now(),
         };

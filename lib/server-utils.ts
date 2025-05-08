@@ -90,7 +90,7 @@ export async function getAllPublishedStories(): Promise<Story[]> {
 }
 
 // Server-side function to get featured stories
-export async function getFeaturedStories(count: number = 3): Promise<Story[]> {
+export async function getFeaturedStories(count = 3): Promise<Story[]> {
   try {
     // In a real application, you might have a "featured" field to query
     // For now, we'll just get the most recent published stories
@@ -111,6 +111,7 @@ export async function getFeaturedStories(count: number = 3): Promise<Story[]> {
     return stories;
   } catch (error) {
     console.error("Error getting featured stories:", error);
+    // Return an empty array instead of throwing to prevent breaking the homepage
     return [];
   }
 }

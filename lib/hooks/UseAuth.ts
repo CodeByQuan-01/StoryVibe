@@ -8,9 +8,10 @@ import {
   onAuthStateChanged,
   updateProfile,
   signInWithPopup,
+  GoogleAuthProvider,
 } from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
-import { auth, db, googleProvider } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import type { User } from "@/lib/types";
 
 export function useAuth() {
@@ -20,24 +21,28 @@ export function useAuth() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
-        if (userDoc.exists()) {
-          setUser(userDoc.data() as User);
-        } else {
-          // Create user document if it doesn't exist
-          const newUser: User = {
-            id: firebaseUser.uid,
-            email: firebaseUser.email || "",
-            displayName:
-              firebaseUser.displayName ||
-              firebaseUser.email?.split("@")[0] ||
-              "User",
-            photoURL: firebaseUser.photoURL || null, // Change undefined to null
-            isAdmin: false,
-            createdAt: Date.now(),
-          };
-          await setDoc(doc(db, "users", firebaseUser.uid), newUser);
-          setUser(newUser);
+        try {
+          const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
+          if (userDoc.exists()) {
+            setUser(userDoc.data() as User);
+          } else {
+            // Create user document if it doesn't exist
+            const newUser: User = {
+              id: firebaseUser.uid,
+              email: firebaseUser.email || "",
+              displayName:
+                firebaseUser.displayName ||
+                firebaseUser.email?.split("@")[0] ||
+                "User",
+              photoURL: firebaseUser.photoURL || null,
+              isAdmin: false,
+              createdAt: Date.now(),
+            };
+            await setDoc(doc(db, "users", firebaseUser.uid), newUser);
+            setUser(newUser);
+          }
+        } catch (error) {
+          console.error("Error fetching or creating user document:", error);
         }
       } else {
         setUser(null);
@@ -48,7 +53,6 @@ export function useAuth() {
     return () => unsubscribe();
   }, []);
 
-  // Update the signUp function to handle errors better
   const signUp = async (
     email: string,
     password: string,
@@ -102,7 +106,12 @@ export function useAuth() {
 
   const signInWithGoogle = async () => {
     try {
-      const provider = googleProvider;
+      // Create a new provider instance each time
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({
+        prompt: "select_account",
+      });
+
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
 

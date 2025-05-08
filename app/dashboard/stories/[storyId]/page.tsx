@@ -49,12 +49,20 @@ export default function StoryPage({ params }: StoryPageProps) {
   } = useStories();
   const { getChaptersByStory, loading: chaptersLoading } = useChapters();
 
+  const [storyId, setStoryId] = useState<string | null>(null);
   const [story, setStory] = useState<Story | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Extract the storyId from params safely
+  useEffect(() => {
+    if (params && params.storyId) {
+      setStoryId(params.storyId);
+    }
+  }, [params]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -64,13 +72,13 @@ export default function StoryPage({ params }: StoryPageProps) {
 
   useEffect(() => {
     const fetchStoryAndChapters = async () => {
-      if (!user) return;
+      if (!user || !storyId) return;
 
       setLoading(true);
       setError(null);
 
       try {
-        const storyData = await getStory(params.storyId);
+        const storyData = await getStory(storyId);
 
         // Check if the user is the author
         if (storyData.authorId !== user.id) {
@@ -80,7 +88,7 @@ export default function StoryPage({ params }: StoryPageProps) {
 
         setStory(storyData);
 
-        const chaptersData = await getChaptersByStory(params.storyId);
+        const chaptersData = await getChaptersByStory(storyId);
         setChapters(chaptersData);
       } catch (err) {
         console.error("Error fetching story:", err);
@@ -93,7 +101,7 @@ export default function StoryPage({ params }: StoryPageProps) {
     };
 
     fetchStoryAndChapters();
-  }, [params.storyId, user, getStory, getChaptersByStory, router]);
+  }, [storyId, user, getStory, getChaptersByStory, router]);
 
   const handleTogglePublish = async () => {
     if (!story) return;

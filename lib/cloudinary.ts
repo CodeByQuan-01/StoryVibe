@@ -26,9 +26,13 @@ export async function uploadToCloudinary(
     const response = await fetch(uploadUrl, {
       method: "POST",
       body: formData,
+      // Add mode: 'cors' to ensure CORS is properly handled
+      mode: "cors",
     });
 
     if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error("Cloudinary upload failed:", errorData);
       throw new Error(`Upload failed with status: ${response.status}`);
     }
 
@@ -63,6 +67,8 @@ export async function deleteFromCloudinary(
     });
 
     if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error("Cloudinary delete failed:", errorData);
       throw new Error(`Delete failed with status: ${response.status}`);
     }
 

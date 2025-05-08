@@ -4,7 +4,9 @@ import type React from "react";
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { useChapters } from "@/lib/hooks/UseChapter";
+import Image from "next/image";
+import { useStories } from "@/lib/hooks/UseStories";
+import { useAuth } from "@/lib/hooks/UseAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,61 +18,57 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { AlertCircle, Music, X } from "lucide-react";
+import { AlertCircle, ImagePlus, X } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import type { Chapter } from "@/lib/types";
+import type { Story } from "@/lib/types";
 
-interface ChapterFormProps {
-  storyId: string;
-  chapter?: Chapter;
+interface StoryFormProps {
+  story?: Story;
   isEditing?: boolean;
-  nextChapterOrder?: number;
 }
 
-export function ChapterForm({
-  storyId,
-  chapter,
-  isEditing = false,
-  nextChapterOrder = 1,
-}: ChapterFormProps) {
+export function StoryForm({ story, isEditing = false }: StoryFormProps) {
   const router = useRouter();
-  const { createChapter, updateChapter, loading, error } = useChapters();
+  const { user } = useAuth();
+  const { createStory, updateStory, loading, error } = useStories();
 
-  const [title, setTitle] = useState(chapter?.title || "");
-  const [content, setContent] = useState(chapter?.content || "");
-  const [musicFile, setMusicFile] = useState<File | null>(null);
-  const [musicFileName, setMusicFileName] = useState(
-    chapter?.musicFilename || ""
+  const [title, setTitle] = useState(story?.title || "");
+  const [description, setDescription] = useState(story?.description || "");
+  const [tags, setTags] = useState(story?.tags?.join(", ") || "");
+  const [coverImage, setCoverImage] = useState<File | null>(null);
+  const [coverImagePreview, setCoverImagePreview] = useState<string>(
+    story?.coverImage || ""
   );
   const [formError, setFormError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleMusicFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCoverImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     // Validate file type
-    if (!file.type.startsWith("audio/")) {
-      setFormError("Please upload an audio file");
+    if (!file.type.startsWith("image/")) {
+      setFormError("Please upload an image file");
       return;
     }
 
-    // Validate file size (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      setFormError("Audio file size should be less than 10MB");
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setFormError("Image size should be less than 5MB");
       return;
     }
 
-    setMusicFile(file);
-    setMusicFileName(file.name);
+    setCoverImage(file);
+    setCoverImagePreview(URL.createObjectURL(file));
     setFormError(null);
   };
 
-  const handleRemoveMusicFile = () => {
-    setMusicFile(null);
-    setMusicFileName("");
+  const handleRemoveCoverImage = () => {
+    setCoverImage(null);
+    setCoverImagePreview("");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -79,130 +77,162 @@ export function ChapterForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
+    setIsSubmitting(true);
 
-    if (!title.trim()) {
-      setFormError("Title is required");
+    if (!user) {
+      setFormError("You must be logged in to create a story");
+      setIsSubmitting(false);
       return;
     }
 
-    if (!content.trim()) {
-      setFormError("Content is required");
+    if (!title.trim()) {
+      setFormError("Title is required");
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!description.trim()) {
+      setFormError("Description is required");
+      setIsSubmitting(false);
       return;
     }
 
     try {
+      const tagArray = tags
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter((tag) => tag.length > 0);
+
       setUploadProgress(10);
 
-      if (isEditing && chapter) {
+      if (isEditing && story) {
         setUploadProgress(30);
-        await updateChapter(
-          chapter.id,
+        await updateStory(
+          story.id,
           {
             title,
-            content,
-            order: chapter.order,
+            description,
+            tags: tagArray,
+            published: story.published,
           },
-          musicFile
+          coverImage
         );
         setUploadProgress(100);
 
-        router.push(`/dashboard/stories/${storyId}`);
+        router.push(`/dashboard/stories/${story.id}`);
         router.refresh();
       } else {
         setUploadProgress(30);
-        await createChapter(
+        const newStory = await createStory(
           {
-            storyId,
             title,
-            content,
-            order: nextChapterOrder,
+            description,
+            authorId: user.id,
+            authorName: user.displayName,
+            tags: tagArray,
+            published: false,
+            coverImage: "", // Will be updated by the createStory
           },
-          musicFile
+          coverImage
         );
         setUploadProgress(100);
 
-        router.push(`/dashboard/stories/${storyId}`);
+        router.push(`/dashboard/stories/${newStory.id}`);
         router.refresh();
       }
-    } catch (err) {
-      console.error("Error submitting chapter:", err);
-      setFormError("Failed to save chapter. Please try again.");
+    } catch (err: any) {
+      console.error("Error submitting story:", err);
+      setFormError(
+        `Failed to save story: ${err.message || "Please try again."}`
+      );
       setUploadProgress(0);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
     <Card className="w-full">
       <CardHeader>
-        <CardTitle>
-          {isEditing ? "Edit Chapter" : "Create New Chapter"}
-        </CardTitle>
+        <CardTitle>{isEditing ? "Edit Story" : "Create New Story"}</CardTitle>
       </CardHeader>
       <form onSubmit={handleSubmit}>
         <CardContent className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="title">Chapter Title</Label>
+            <Label htmlFor="title">Title</Label>
             <Input
               id="title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Enter chapter title"
+              placeholder="Enter story title"
               required
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="content">Chapter Content</Label>
+            <Label htmlFor="description">Description</Label>
             <Textarea
-              id="content"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="Write your chapter content here..."
-              rows={15}
+              id="description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Enter story description"
+              rows={4}
               required
-              className="font-serif text-lg leading-relaxed"
             />
           </div>
 
           <div className="space-y-2">
-            <Label>Background Music (Optional)</Label>
-            <div className="flex flex-col space-y-4">
-              {musicFileName ? (
-                <div className="flex items-center justify-between p-3 border rounded-md">
-                  <div className="flex items-center">
-                    <Music className="h-5 w-5 text-[#1A73E8] mr-2" />
-                    <span className="text-sm truncate max-w-[250px]">
-                      {musicFileName}
-                    </span>
-                  </div>
+            <Label htmlFor="tags">Tags (comma separated)</Label>
+            <Input
+              id="tags"
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+              placeholder="fantasy, adventure, mystery"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Cover Image</Label>
+            <div className="flex flex-col items-center space-y-4">
+              {coverImagePreview ? (
+                <div className="relative w-full max-w-md aspect-[16/9]">
+                  <Image
+                    src={coverImagePreview || "/placeholder.svg"}
+                    alt="Cover preview"
+                    fill
+                    className="object-cover rounded-md"
+                  />
                   <Button
                     type="button"
-                    variant="ghost"
+                    variant="destructive"
                     size="icon"
-                    onClick={handleRemoveMusicFile}
-                    aria-label="Remove music file"
+                    className="absolute top-2 right-2 h-8 w-8 rounded-full"
+                    onClick={handleRemoveCoverImage}
+                    aria-label="Remove cover image"
                   >
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
               ) : (
                 <div
-                  className="border-2 border-dashed rounded-md p-4 flex flex-col items-center justify-center cursor-pointer hover:border-[#1A73E8] transition-colors"
+                  className="border-2 border-dashed rounded-md p-8 w-full max-w-md flex flex-col items-center justify-center cursor-pointer hover:border-[#1A73E8] transition-colors"
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  <Music className="h-8 w-8 text-gray-400 mb-2" />
+                  <ImagePlus className="h-10 w-10 text-gray-400 mb-2" />
                   <p className="text-sm text-gray-500">
-                    Click to upload background music
+                    Click to upload cover image
                   </p>
-                  <p className="text-xs text-gray-400 mt-1">MP3 up to 10MB</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    PNG, JPG, GIF up to 5MB
+                  </p>
                 </div>
               )}
               <input
                 type="file"
                 ref={fileInputRef}
-                onChange={handleMusicFileChange}
+                onChange={handleCoverImageChange}
                 className="hidden"
-                accept="audio/*"
+                accept="image/*"
               />
             </div>
           </div>
@@ -231,16 +261,16 @@ export function ChapterForm({
             type="button"
             variant="outline"
             onClick={() => router.back()}
-            disabled={loading}
+            disabled={loading || isSubmitting}
           >
             Cancel
           </Button>
-          <Button type="submit" disabled={loading}>
-            {loading
+          <Button type="submit" disabled={loading || isSubmitting}>
+            {loading || isSubmitting
               ? "Saving..."
               : isEditing
-              ? "Update Chapter"
-              : "Create Chapter"}
+              ? "Update Story"
+              : "Create Story"}
           </Button>
         </CardFooter>
       </form>

@@ -10,11 +10,12 @@ const nextConfig = {
     domains: [
       "firebasestorage.googleapis.com",
       "lh3.googleusercontent.com",
-      "res.cloudinary.com", // ✅ Allow Cloudinary images
+      "res.cloudinary.com",
     ],
     formats: ["image/avif", "image/webp"],
     unoptimized: true,
   },
+  // Add security headers
   async headers() {
     return [
       {
@@ -31,11 +32,6 @@ const nextConfig = {
           {
             key: "X-XSS-Protection",
             value: "1; mode=block",
-          },
-          {
-            key: "Content-Security-Policy",
-            value:
-              "default-src 'self'; script-src 'self'; connect-src 'self' https://api.cloudinary.com https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://*.firebase.com https://*.firebaseapp.com; img-src 'self' https://res.cloudinary.com data: https:; style-src 'self' 'unsafe-inline';",
           },
         ],
       },

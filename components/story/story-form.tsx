@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useStories } from "@/lib/hooks/UseStories";
 import { useAuth } from "@/lib/hooks/UseAuth";
+import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -82,6 +83,16 @@ export function StoryForm({ story, isEditing = false }: StoryFormProps) {
       return;
     }
 
+    const firebaseUser = auth.currentUser;
+    if (!firebaseUser) {
+      setFormError("Authentication error. Please log in again.");
+      return;
+    }
+
+    console.log("Current user:", user);
+    console.log("Firebase user UID:", firebaseUser.uid);
+    console.log("User ID from auth hook:", user.id);
+
     if (!title.trim()) {
       setFormError("Title is required");
       return;
@@ -118,12 +129,25 @@ export function StoryForm({ story, isEditing = false }: StoryFormProps) {
         router.refresh();
       } else {
         setUploadProgress(30);
+        console.log("Creating story with data:", {
+          title,
+          description,
+          authorId: firebaseUser.uid,
+          authorName:
+            user.displayName || firebaseUser.displayName || firebaseUser.email,
+          tags: tagArray,
+          published: false,
+        });
+
         const newStory = await createStory(
           {
             title,
             description,
-            authorId: user.id,
-            authorName: user.displayName,
+            authorId: firebaseUser.uid,
+            authorName:
+              user.displayName ||
+              firebaseUser.displayName ||
+              firebaseUser.email,
             tags: tagArray,
             published: false,
             coverImage: "", // Will be updated by the createStory

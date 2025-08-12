@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Play, Pause, Volume2, VolumeX } from "lucide-react";
+import {
+  Play,
+  Pause,
+  Volume2,
+  VolumeX,
+  SkipBack,
+  SkipForward,
+} from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 
@@ -9,12 +16,18 @@ interface AudioPlayerProps {
   audioUrl: string;
   title: string;
   autoFade?: boolean;
+  autoPlay?: boolean;
+  loop?: boolean;
+  showControls?: boolean;
 }
 
 export function AudioPlayer({
   audioUrl,
   title,
   autoFade = true,
+  autoPlay = false,
+  loop = true,
+  showControls = true,
 }: AudioPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -22,64 +35,99 @@ export function AudioPlayer({
   const [volume, setVolume] = useState(0.7);
   const [isMuted, setIsMuted] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const animationRef = useRef<number | null>(null);
 
   useEffect(() => {
     const audio = new Audio(audioUrl);
     audioRef.current = audio;
+    audio.loop = loop;
 
     const setAudioData = () => {
       setDuration(audio.duration);
       setIsLoaded(true);
+      setIsLoading(false);
+    };
+
+    const handleLoadStart = () => {
+      setIsLoading(true);
+    };
+
+    const handleCanPlay = () => {
+      setIsLoading(false);
     };
 
     const handleEnded = () => {
-      setIsPlaying(false);
-      setCurrentTime(0);
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
+      if (!loop) {
+        setIsPlaying(false);
+        setCurrentTime(0);
+        if (animationRef.current) {
+          cancelAnimationFrame(animationRef.current);
+        }
       }
     };
 
+    const handleError = () => {
+      setIsLoading(false);
+      setIsLoaded(false);
+      console.error("Error loading audio file");
+    };
+
+    audio.addEventListener("loadstart", handleLoadStart);
+    audio.addEventListener("canplay", handleCanPlay);
     audio.addEventListener("loadeddata", setAudioData);
     audio.addEventListener("ended", handleEnded);
+    audio.addEventListener("error", handleError);
 
-    // Auto-fade in if enabled
-    if (autoFade) {
-      audio.volume = 0;
-      setVolume(0);
+    // Set initial volume
+    audio.volume = volume;
 
-      const fadeIn = () => {
-        if (audio.volume < 0.7) {
-          audio.volume += 0.01;
-          setVolume(audio.volume);
-          setTimeout(fadeIn, 100);
-        }
-      };
+    // Auto-play with fade-in if enabled
+    if (autoPlay) {
+      if (autoFade) {
+        audio.volume = 0;
+        setVolume(0);
 
-      setTimeout(() => {
-        audio
-          .play()
-          .then(() => {
-            setIsPlaying(true);
-            fadeIn();
-          })
-          .catch((err) => console.error("Error auto-playing audio:", err));
-      }, 1000);
-    } else {
-      audio.volume = volume;
+        const fadeIn = () => {
+          if (audio.volume < 0.7) {
+            audio.volume += 0.01;
+            setVolume(audio.volume);
+            setTimeout(fadeIn, 50);
+          }
+        };
+
+        setTimeout(() => {
+          audio
+            .play()
+            .then(() => {
+              setIsPlaying(true);
+              fadeIn();
+            })
+            .catch((err) => console.error("Error auto-playing audio:", err));
+        }, 1000);
+      } else {
+        setTimeout(() => {
+          audio
+            .play()
+            .then(() => setIsPlaying(true))
+            .catch((err) => console.error("Error auto-playing audio:", err));
+        }, 500);
+      }
     }
 
     return () => {
+      audio.removeEventListener("loadstart", handleLoadStart);
+      audio.removeEventListener("canplay", handleCanPlay);
       audio.removeEventListener("loadeddata", setAudioData);
       audio.removeEventListener("ended", handleEnded);
+      audio.removeEventListener("error", handleError);
       audio.pause();
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [audioUrl, autoFade, volume]);
+  }, [audioUrl, autoFade, autoPlay, loop, volume]);
 
   const togglePlayPause = () => {
     if (!audioRef.current) return;
@@ -90,8 +138,12 @@ export function AudioPlayer({
         cancelAnimationFrame(animationRef.current);
       }
     } else {
-      audioRef.current.play();
-      animationRef.current = requestAnimationFrame(whilePlaying);
+      audioRef.current
+        .play()
+        .then(() => {
+          animationRef.current = requestAnimationFrame(whilePlaying);
+        })
+        .catch((err) => console.error("Error playing audio:", err));
     }
     setIsPlaying(!isPlaying);
   };
@@ -136,6 +188,22 @@ export function AudioPlayer({
     }
   };
 
+  const skipBackward = () => {
+    if (!audioRef.current) return;
+    audioRef.current.currentTime = Math.max(
+      0,
+      audioRef.current.currentTime - 10
+    );
+  };
+
+  const skipForward = () => {
+    if (!audioRef.current) return;
+    audioRef.current.currentTime = Math.min(
+      duration,
+      audioRef.current.currentTime + 10
+    );
+  };
+
   const formatTime = (time: number) => {
     if (isNaN(time)) return "0:00";
 
@@ -144,10 +212,21 @@ export function AudioPlayer({
     return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
   };
 
-  if (!isLoaded) {
+  if (isLoading) {
     return (
       <div className="w-full bg-white rounded-md p-3 shadow-sm border flex items-center justify-center">
-        <p className="text-sm text-gray-500">Loading music...</p>
+        <div className="flex items-center space-x-2">
+          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+          <p className="text-sm text-gray-500">Loading music...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isLoaded) {
+    return (
+      <div className="w-full bg-red-50 rounded-md p-3 shadow-sm border flex items-center justify-center">
+        <p className="text-sm text-red-600">Failed to load audio file</p>
       </div>
     );
   }
@@ -155,19 +234,47 @@ export function AudioPlayer({
   return (
     <div className="w-full bg-white rounded-md p-3 shadow-sm border">
       <div className="flex items-center space-x-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 rounded-full"
-          onClick={togglePlayPause}
-          aria-label={isPlaying ? "Pause" : "Play"}
-        >
-          {isPlaying ? (
-            <Pause className="h-4 w-4" />
-          ) : (
-            <Play className="h-4 w-4" />
+        <div className="flex items-center space-x-1">
+          {showControls && (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={skipBackward}
+                aria-label="Skip backward 10 seconds"
+              >
+                <SkipBack className="h-4 w-4" />
+              </Button>
+            </>
           )}
-        </Button>
+
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 rounded-full"
+            onClick={togglePlayPause}
+            aria-label={isPlaying ? "Pause" : "Play"}
+          >
+            {isPlaying ? (
+              <Pause className="h-4 w-4" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
+          </Button>
+
+          {showControls && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={skipForward}
+              aria-label="Skip forward 10 seconds"
+            >
+              <SkipForward className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
 
         <div className="flex-1 space-y-1">
           <div className="text-sm font-medium truncate">{title}</div>

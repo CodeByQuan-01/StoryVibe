@@ -1,52 +1,79 @@
+// User type definition
 export interface User {
   id: string;
   email: string;
   displayName: string;
-  photoURL?: string | null;
-  isAdmin?: boolean;
+  photoURL: string | null;
+  isAdmin: boolean;
   createdAt: number;
 }
 
+// Story type definition
 export interface Story {
   id: string;
   title: string;
   description: string;
-  coverImage: string;
-  coverImagePublicId?: string; // Added for Cloudinary
   authorId: string;
   authorName: string;
+  coverImage: string;
+  coverImagePublicId?: string;
   tags: string[];
+  published: boolean;
   createdAt: number;
   updatedAt: number;
-  published: boolean;
   chapterCount: number;
+  readCount?: number;
+  uniqueReaders?: number;
 }
 
+// Chapter type definition
 export interface Chapter {
   id: string;
   storyId: string;
   title: string;
   content: string;
-  musicUrl?: string;
-  musicPublicId?: string; // Added for Cloudinary
-  musicFilename?: string;
   order: number;
+  musicUrl?: string;
+  musicPublicId?: string;
+  musicFilename?: string;
   createdAt: number;
   updatedAt: number;
+  readCount?: number;
 }
 
-export interface Comment {
+// Audio player state
+export interface AudioState {
+  isPlaying: boolean;
+  currentTime: number;
+  duration: number;
+  volume: number;
+}
+
+export interface StoryRead {
   id: string;
   storyId: string;
-  chapterId?: string;
   userId: string;
-  userName: string;
-  content: string;
-  createdAt: number;
+  readAt: number;
+  chaptersRead: string[];
+  lastChapterRead?: string;
+  totalReadTime: number;
+  isCompleted: boolean;
 }
 
-// Cloudinary asset interface
-export interface CloudinaryAsset {
-  url: string;
-  publicId: string;
+export interface ChapterRead {
+  id: string;
+  chapterId: string;
+  storyId: string;
+  userId: string;
+  readAt: number;
+  readTime: number;
+  completed: boolean;
+}
+
+export interface ReadingStats {
+  totalReads: number;
+  uniqueReaders: number;
+  averageReadTime: number;
+  completionRate: number;
+  popularChapters: { chapterId: string; title: string; readCount: number }[];
 }

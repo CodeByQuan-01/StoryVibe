@@ -22,11 +22,12 @@ export function useAuth() {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
+          await firebaseUser.getIdToken(true);
+
           const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
           if (userDoc.exists()) {
             setUser(userDoc.data() as User);
           } else {
-            // Create user document if it doesn't exist
             const newUser: User = {
               id: firebaseUser.uid,
               email: firebaseUser.email || "",
@@ -38,11 +39,44 @@ export function useAuth() {
               isAdmin: false,
               createdAt: Date.now(),
             };
-            await setDoc(doc(db, "users", firebaseUser.uid), newUser);
+
+            let retries = 3;
+            while (retries > 0) {
+              try {
+                await setDoc(doc(db, "users", firebaseUser.uid), newUser);
+                console.log("User document created successfully");
+                break;
+              } catch (error) {
+                retries--;
+                console.error(
+                  `Error creating user document (${retries} retries left):`,
+                  error
+                );
+                if (retries === 0) {
+                  console.error(
+                    "Failed to create user document after all retries"
+                  );
+                }
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+              }
+            }
+
             setUser(newUser);
           }
         } catch (error) {
           console.error("Error fetching or creating user document:", error);
+          const fallbackUser: User = {
+            id: firebaseUser.uid,
+            email: firebaseUser.email || "",
+            displayName:
+              firebaseUser.displayName ||
+              firebaseUser.email?.split("@")[0] ||
+              "User",
+            photoURL: firebaseUser.photoURL || null,
+            isAdmin: false,
+            createdAt: Date.now(),
+          };
+          setUser(fallbackUser);
         }
       } else {
         setUser(null);
@@ -68,11 +102,13 @@ export function useAuth() {
       const firebaseUser = userCredential.user;
       console.log("User created in Firebase Auth:", firebaseUser.uid);
 
+      await firebaseUser.getIdToken(true);
+
       // Update profile with display name
       await updateProfile(firebaseUser, { displayName });
       console.log("Profile updated with display name");
 
-      // Create user document
+      // Create user document with retry logic
       const newUser: User = {
         id: firebaseUser.uid,
         email: firebaseUser.email || "",
@@ -83,8 +119,27 @@ export function useAuth() {
       };
 
       console.log("Creating user document in Firestore...");
-      await setDoc(doc(db, "users", firebaseUser.uid), newUser);
-      console.log("User document created successfully");
+
+      let retries = 3;
+      while (retries > 0) {
+        try {
+          await setDoc(doc(db, "users", firebaseUser.uid), newUser);
+          console.log("User document created successfully");
+          break;
+        } catch (error) {
+          retries--;
+          console.error(
+            `Error creating user document (${retries} retries left):`,
+            error
+          );
+          if (retries === 0) {
+            throw new Error(
+              "Failed to create user profile. Please try signing in again."
+            );
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      }
 
       return newUser;
     } catch (error: any) {
@@ -97,7 +152,12 @@ export function useAuth() {
 
   const signIn = async (email: string, password: string) => {
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+      await userCredential.user.getIdToken(true);
     } catch (error) {
       console.error("Error signing in:", error);
       throw error;
@@ -115,10 +175,11 @@ export function useAuth() {
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
 
+      await firebaseUser.getIdToken(true);
+
       // Check if user document exists
       const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
       if (!userDoc.exists()) {
-        // Create user document if it doesn't exist
         const newUser: User = {
           id: firebaseUser.uid,
           email: firebaseUser.email || "",
@@ -127,7 +188,22 @@ export function useAuth() {
           isAdmin: false,
           createdAt: Date.now(),
         };
-        await setDoc(doc(db, "users", firebaseUser.uid), newUser);
+
+        let retries = 3;
+        while (retries > 0) {
+          try {
+            await setDoc(doc(db, "users", firebaseUser.uid), newUser);
+            break;
+          } catch (error) {
+            retries--;
+            if (retries === 0) {
+              console.error(
+                "Failed to create user document after Google sign in"
+              );
+            }
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+          }
+        }
       }
     } catch (error) {
       console.error("Error signing in with Google:", error);

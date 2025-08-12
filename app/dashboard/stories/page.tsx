@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/hooks/UseAuth";
@@ -20,28 +20,34 @@ export default function StoriesPage() {
   const [stories, setStories] = useState<Story[]>([]);
   const [filteredStories, setFilteredStories] = useState<Story[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
-    if (!authLoading && !user) {
-      router.push("/auth");
-    }
-  }, [user, authLoading, router]);
+    setIsMounted(true);
+    return () => setIsMounted(false);
+  }, []);
 
-  useEffect(() => {
-    const fetchStories = async () => {
-      if (!user) return;
+  const fetchStories = useCallback(async () => {
+    if (!user) return;
 
-      try {
-        const userStories = await getStoriesByAuthor(user.id);
+    try {
+      const userStories = await getStoriesByAuthor(user.id);
+      if (isMounted) {
         setStories(userStories);
         setFilteredStories(userStories);
-      } catch (err) {
+      }
+    } catch (err) {
+      if (isMounted) {
         console.error("Error fetching stories:", err);
       }
-    };
+    }
+  }, [user, getStoriesByAuthor, isMounted]);
 
-    fetchStories();
-  }, [user, getStoriesByAuthor]);
+  useEffect(() => {
+    if (isMounted) {
+      fetchStories();
+    }
+  }, [fetchStories, isMounted]);
 
   useEffect(() => {
     if (searchTerm.trim() === "") {

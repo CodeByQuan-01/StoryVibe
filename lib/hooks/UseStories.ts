@@ -17,6 +17,7 @@ import {
   type DocumentSnapshot,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { auth } from "@/lib/firebase"; // Import auth for user information
 import {
   uploadToCloudinary,
   deleteFromCloudinary,
@@ -27,6 +28,22 @@ import type { Story } from "@/lib/types";
 export function useStories() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const ensureFreshToken = async () => {
+    const user = auth.currentUser;
+    if (!user) {
+      throw new Error("User not authenticated");
+    }
+
+    // Force token refresh to ensure it's valid
+    const token = await user.getIdToken(true);
+    console.log("Fresh token obtained, length:", token.length);
+
+    // Wait a moment for the token to propagate
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    return user;
+  };
 
   const createStory = async (
     story: Omit<
@@ -39,11 +56,43 @@ export function useStories() {
     setError(null);
 
     try {
+      const firebaseUser = await ensureFreshToken();
+
+      console.log("Creating story with authorId:", story.authorId);
+      console.log("Current Firebase user:", firebaseUser.uid);
+      console.log("Auth token refreshed successfully");
+
+      if (story.authorId !== firebaseUser.uid) {
+        throw new Error("Author ID mismatch - security violation");
+      }
+
+      try {
+        const userDocRef = doc(db, "users", firebaseUser.uid);
+        const userDoc = await getDoc(userDocRef);
+
+        if (!userDoc.exists()) {
+          console.log("User document doesn't exist, creating it...");
+          await addDoc(collection(db, "users"), {
+            id: firebaseUser.uid,
+            email: firebaseUser.email,
+            displayName: firebaseUser.displayName || story.authorName,
+            photoURL: firebaseUser.photoURL,
+            createdAt: Date.now(),
+            isAdmin: false,
+          });
+          console.log("User document created successfully");
+        }
+      } catch (userError) {
+        console.warn("Could not create/verify user document:", userError);
+        // Continue anyway - this shouldn't block story creation
+      }
+
       let coverImageUrl = "";
       let coverImagePublicId = "";
 
       // Upload cover image to Cloudinary if provided
       if (coverImageFile) {
+        console.log("Uploading cover image...");
         const cloudinaryResponse = await uploadToCloudinary(
           coverImageFile,
           `storyvibe/covers/${story.authorId}`,
@@ -51,6 +100,7 @@ export function useStories() {
         );
         coverImageUrl = cloudinaryResponse.url;
         coverImagePublicId = cloudinaryResponse.publicId;
+        console.log("Cover image uploaded successfully");
       }
 
       // Create story document
@@ -63,11 +113,70 @@ export function useStories() {
         chapterCount: 0,
       };
 
-      const docRef = await addDoc(collection(db, "stories"), storyData);
+      console.log("Story data to be saved:", storyData);
+
+      let retries = 3;
+      let docRef;
+      let delay = 1000;
+
+      while (retries > 0) {
+        try {
+          // Refresh token before each attempt
+          await ensureFreshToken();
+          docRef = await addDoc(collection(db, "stories"), storyData);
+          break;
+        } catch (err: any) {
+          retries--;
+          console.error(`Attempt failed:`, err);
+
+          if (
+            (err.code === "permission-denied" ||
+              err.message.includes("insufficient permissions")) &&
+            retries > 0
+          ) {
+            console.log(
+              `Permission denied, retrying... (${retries} attempts left)`
+            );
+            // Exponential backoff
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            delay *= 2;
+          } else {
+            throw err;
+          }
+        }
+      }
+
+      if (!docRef) {
+        throw new Error("Failed to create story after multiple attempts");
+      }
+
+      console.log("Story created successfully with ID:", docRef.id);
       return { id: docRef.id, ...storyData };
     } catch (err) {
       console.error("Error creating story:", err);
-      setError("Failed to create story. Please try again.");
+      if (err instanceof Error) {
+        console.error("Error message:", err.message);
+        console.error("Error stack:", err.stack);
+
+        if (
+          err.message.includes("permission-denied") ||
+          err.message.includes("insufficient permissions")
+        ) {
+          setError(
+            "Authentication error. Please sign out and sign back in, then try again."
+          );
+        } else if (err.message.includes("Author ID mismatch")) {
+          setError("Security error. Please refresh the page and try again.");
+        } else if (err.message.includes("network")) {
+          setError(
+            "Network error. Please check your connection and try again."
+          );
+        } else {
+          setError("Failed to create story. Please try again.");
+        }
+      } else {
+        setError("Failed to create story. Please try again.");
+      }
       throw err;
     } finally {
       setLoading(false);
